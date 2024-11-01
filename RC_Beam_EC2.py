@@ -38,4 +38,4 @@ def main():
 
 
 # Uncomment the line below to run the main function
-# main()
+main()
