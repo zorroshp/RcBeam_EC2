@@ -323,9 +323,56 @@ def perform_bending_design(f_ck, f_yk_main,f_yk_shear, gamma_s, h, b, c_nom, d_w
             A_sc_req = ((K - K_bal) * f_ck * b * d_eff**2) / (f_sc * (d_eff - dc_eff))
             A_s_req = ((K_bal * f_ck * b * d_eff**2) / (f_yd_main * z_m_bal)) + A_sc_req
 
-    return A_s_req, A_sc_req, f_yd_main, f_yd_shear, y_t, y_c, d_eff, dc_eff, d_w
+    return A_s_req, A_sc_req, f_yd_main, f_yd_shear, y_t, y_c, d_eff, dc_eff
+
+
+
+import sys
+from PyQt5.QtWidgets import QApplication, QFileDialog, QWidget, QVBoxLayout, QPushButton, QTextEdit
+from fpdf import FPDF
+
+class PDFGeneratorApp(QWidget):
+    def __init__(self, output_text):
+        super().__init__()
+        self.output_text = output_text
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        # Text edit to show the output
+        self.text_display = QTextEdit(self)
+        self.text_display.setPlainText('\n'.join(self.output_text))
+        self.text_display.setReadOnly(True)
+        layout.addWidget(self.text_display)
+
+        # Button to save the output to PDF
+        self.save_pdf_button = QPushButton('Save PDF', self)
+        self.save_pdf_button.clicked.connect(self.save_pdf)
+        layout.addWidget(self.save_pdf_button)
+
+        # Set layout and window properties
+        self.setLayout(layout)
+        self.setWindowTitle("RC Beam Design Output")
+        self.setGeometry(100, 100, 600, 400)
+
+    def save_pdf(self):
+        # Prompt a browse window to choose the folder location
+        file_dialog = QFileDialog()
+        file_dialog.setFileMode(QFileDialog.AnyFile)
+        file_dialog.setNameFilter("PDF Files (*.pdf)")
+        file_dialog.setDefaultSuffix("pdf")
+        file_path, _ = file_dialog.getSaveFileName(self, "Save PDF", "output.pdf", "PDF Files (*.pdf);;All Files (*)")
+        if file_path:
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+            for line in self.output_text:
+                pdf.cell(200, 10, txt=line, ln=True)
+            pdf.output(file_path)
 
 def main():
+    # Run the RC beam design script
     # Get material and section details
     f_ck, f_yk_main, f_yk_shear, gamma_c, alpha_cc, gamma_s = get_material_details()
     c_nom, h, b = get_section_details()
@@ -333,46 +380,55 @@ def main():
     d_w, n_l, s, A_sw = get_shear_reinforcement_details()
 
     # Perform bending design and get the results
-    A_s_req, A_sc_req, f_yd_main, f_yd_shear, y_t, y_c,d_eff,dc_eff,d_w = perform_bending_design(f_ck, f_yk_main,f_yk_shear, gamma_s, h, b, c_nom, d_w, reinforcement_layers, A_s_pro, A_sc_pro, gamma_c)
+    A_s_req, A_sc_req, f_yd_main, f_yd_shear, y_t, y_c, d_eff, dc_eff = perform_bending_design(f_ck, f_yk_main, f_yk_shear, gamma_s, h, b, c_nom, d_w, reinforcement_layers, A_s_pro, A_sc_pro, gamma_c)
 
+    # Store all the output lines
+    output_text = [
+        "\nMaterial and Section Details:",
+        f"Concrete strength (f_ck): {f_ck} N/mm²",
+        f"Main reinforcement strength (f_yk_main): {f_yk_main} N/mm²",
+        f"Shear reinforcement strength (f_yk_shear): {f_yk_shear} N/mm²",
+        f"Partial factor for concrete (gamma_c): {gamma_c}",
+        f"Compressive strength coefficient (alpha_cc): {alpha_cc}",
+        f"Partial factor for steel (gamma_s): {gamma_s}",
 
-    # Print all the calculation outputs
-    print("\nMaterial and Section Details:")
-    print(f"Concrete strength (f_ck): {f_ck} N/mm²")
-    print(f"Main reinforcement strength (f_yk_main): {f_yk_main} N/mm²")
-    print(f"Shear reinforcement strength (f_yk_shear): {f_yk_shear} N/mm²")
-    print(f"Partial factor for concrete (gamma_c): {gamma_c}")
-    print(f"Compressive strength coefficient (alpha_cc): {alpha_cc}")
-    print(f"Partial factor for steel (gamma_s): {gamma_s}")
+        "\nCalculated Design Strengths:",
+        f"Design strength of main reinforcement (f_yd_main): {f_yd_main} N/mm²",
+        f"Design strength of shear reinforcement (f_yd_shear): {f_yd_shear} N/mm²",
 
-    print("\nCalculated Design Strengths:")
-    print(f"Design strength of main reinforcement (f_yd_main): {f_yd_main} N/mm²")
-    print(f"Design strength of shear reinforcement (f_yd_shear): {f_yd_shear} N/mm²")
+        "\nSection Details:",
+        f"Nominal cover (c_nom): {c_nom} m",
+        f"Section depth (h): {h} m",
+        f"Section width (b): {b} m",
 
-    print("\nSection Details:")
-    print(f"Nominal cover (c_nom): {c_nom} m")
-    print(f"Section depth (h): {h} m")
-    print(f"Section width (b): {b} m")
+        "\nReinforcement Details:",
+        f"Total area of tension reinforcement (A_s_pro): {A_s_pro} mm²",
+        f"Total area of compression reinforcement (A_sc_pro): {A_sc_pro} mm²",
 
-    print("\nReinforcement Details:")
-    print(f"Total area of tension reinforcement (A_s_pro): {A_s_pro} mm²")
-    print(f"Total area of compression reinforcement (A_sc_pro): {A_sc_pro} mm²")
+        "\nEffective Depth Values:",
+        f"Distance from centroid to tension reinforcement layer (y_t): {y_t} mm",
+        f"Distance from centroid to compression reinforcement layer (y_c): {y_c} mm",
+        f"Effective Depth to tension reinforcement (d_eff): {d_eff} mm",
+        f"Effective Depth to compression reinforcement (dc_eff): {dc_eff} mm",
 
-    print("\nEffective Depth Values:")
-    print(f"Distance from centroid to tension reinforcement layer (y_t): {y_t} mm")
-    print(f"Distance from centroid to compression reinforcement layer (y_c): {y_c} mm")
-    print(f"Effective Depth to tension reinforcement (d_eff): {d_eff} mm")
-    print(f"Effective Depth to compression reinforcement (dc_eff): {dc_eff} mm")
+        "\nShear Reinforcement Details:",
+        f"Shear reinforcement area (A_sw): {A_sw} mm²",
 
-    print("\nShear Reinforcement Details:")
-    print(f"Shear reinforcement area (A_sw): {A_sw} mm²")
+        "\nBending Design Results:",
+        f"Required Area of Tension Reinforcement (A_s_req): {A_s_req:.2f} mm²",
+        f"Required Area of Compression Reinforcement (A_sc_req): {A_sc_req:.2f} mm²",
+    ]
 
-    print("\nBending Design Results:")
-    print(f"Required Area of Tension Reinforcement (A_s_req): {A_s_req:.2f} mm²")
-    print(f"Required Area of Compression Reinforcement (A_sc_req): {A_sc_req:.2f} mm²")
+    # Launch the PyQt5 app to display output and save as PDF
+    app = QApplication(sys.argv)
+    pdf_app = PDFGeneratorApp(output_text)
+    pdf_app.show()
+    sys.exit(app.exec_())
 
 if __name__ == "__main__":
     main()
+
+
 
 
 
