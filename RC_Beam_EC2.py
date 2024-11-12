@@ -194,6 +194,7 @@ class RCBeamDesignApp(QWidget):
         container.setLayout(layout)
         return container
 
+
     def calculate(self):
         try:
             # Get input values from the UI
@@ -227,28 +228,35 @@ class RCBeamDesignApp(QWidget):
             # Continue processing other tension and compression layers
             reinforcement_layers = {'tension': [], 'compression': []}
             for diameter_input, number_input in self.tension_layers_input:
-                # Skip if diameter or number is empty
                 if not diameter_input.currentText() or not number_input.text():
                     continue
-                d_s = float(diameter_input.currentText())  # Get diameter from ComboBox
-                n_s = int(number_input.text())
-                if d_s > 0 and n_s > 0:
-                    A_s = math.pi * (d_s ** 2) * 0.25 * n_s
-                    reinforcement_layers['tension'].append((d_s, A_s))
+                try:
+                    d_s = float(diameter_input.currentText())  # Get diameter from ComboBox
+                    n_s = int(number_input.text())
+                    if d_s > 0 and n_s > 0:
+                        A_s = math.pi * (d_s ** 2) * 0.25 * n_s
+                        reinforcement_layers['tension'].append((d_s, A_s))
+                except ValueError:
+                    continue
 
             for diameter_input, number_input in self.compression_layers_input:
-                # Skip if diameter or number is empty
                 if not diameter_input.currentText() or not number_input.text():
                     continue
-                d_sc = float(diameter_input.currentText())  # Get diameter from ComboBox
-                n_sc = int(number_input.text())
-                if d_sc > 0 and n_sc > 0:
-                    A_sc = math.pi * (d_sc ** 2) * 0.25 * n_sc
-                    reinforcement_layers['compression'].append((d_sc, A_sc))
+                try:
+                    d_sc = float(diameter_input.currentText())  # Get diameter from ComboBox
+                    n_sc = int(number_input.text())
+                    if d_sc > 0 and n_sc > 0:
+                        A_sc = math.pi * (d_sc ** 2) * 0.25 * n_sc
+                        reinforcement_layers['compression'].append((d_sc, A_sc))
+                except ValueError:
+                    continue
 
+            # Total area of tension reinforcement
             A_s_total = sum(A_s for _, A_s in reinforcement_layers['tension'])
-            y_t = 0
+            if A_s_total == 0:
+                raise ValueError("Total tension reinforcement area is zero. Please provide valid tension reinforcement data.")
 
+            y_t = 0
             # Corrected Centroid Calculation for Tension Reinforcement Layers
             for i, (d_s, A_s) in enumerate(reinforcement_layers['tension']):
                 if i == 0:
@@ -261,25 +269,24 @@ class RCBeamDesignApp(QWidget):
                     layer_depth = previous_layers_depth + (d_s * 0.5)
                 y_t += A_s * layer_depth
 
-            if A_s_total > 0:
-                y_t /= A_s_total
+            y_t /= A_s_total
 
-            # Corrected Centroid Calculation for Compression Reinforcement Layers
+            # Total area of compression reinforcement
             A_sc_total = sum(A_sc for _, A_sc in reinforcement_layers['compression'])
             y_c = 0
-
-            for i, (d_sc, A_sc) in enumerate(reinforcement_layers['compression']):
-                if i == 0:
-                    layer_depth = d_sc * 0.5
-                else:
-                    previous_layers_depth = sum(
-                        (reinforcement_layers['compression'][j][0] + max(25, reinforcement_layers['compression'][j][0]))
-                        for j in range(i)
-                    )
-                    layer_depth = previous_layers_depth + (d_sc * 0.5)
-                y_c += A_sc * layer_depth
-
             if A_sc_total > 0:
+                # Corrected Centroid Calculation for Compression Reinforcement Layers
+                for i, (d_sc, A_sc) in enumerate(reinforcement_layers['compression']):
+                    if i == 0:
+                        layer_depth = d_sc * 0.5
+                    else:
+                        previous_layers_depth = sum(
+                            (reinforcement_layers['compression'][j][0] + max(25, reinforcement_layers['compression'][j][0]))
+                            for j in range(i)
+                        )
+                        layer_depth = previous_layers_depth + (d_sc * 0.5)
+                    y_c += A_sc * layer_depth
+
                 y_c /= A_sc_total
 
             d_eff = h - c_nom - d_w - y_t
@@ -287,6 +294,7 @@ class RCBeamDesignApp(QWidget):
 
             # Redistribution
             rdp = float(self.rdp_input.text())  # Get Redistribution Percentage from user input
+
             mr = 1 - (rdp / 100)
 
             # K calculations
@@ -296,16 +304,25 @@ class RCBeamDesignApp(QWidget):
             K = M_Ed / (b * d_eff ** 2 * f_ck)
 
             if K <= K_bal:
+                # Singly reinforced
                 section_type = "Singly Reinforced Section"
-                z_m = min(((0.5 + (0.25 - 0.881 * K) ** 0.5) * d_eff), 0.95 * d_eff) if (0.25 - 0.881 * K) >= 0 else 0.95 * d_eff
+                # Calculate lever arm 'z_m'
+                if (0.25 - 0.881 * K) < 0:
+                    # If the value inside the square root is negative, use 0.95 * d_eff
+                    z_m = 0.95 * d_eff
+                else:
+                    z_m = min(((0.5 + (0.25 - 0.881 * K) ** 0.5) * d_eff), 0.95 * d_eff)
                 A_s_min = 0.001572 * b * d_eff
                 A_s_req = max(M_Ed / (z_m * (f_yk_main / gamma_s)), A_s_min)
                 A_sc_req = 0  # No compression reinforcement required
+                compression_utilisation_ratio = None  # No compression reinforcement needed
             else:
+                # Doubly reinforced
                 section_type = "Doubly Reinforced Section"
                 z_m = d_eff * 0.82
                 A_sc_req = ((K - K_bal) * f_ck * b * d_eff ** 2) / ((f_yk_main / gamma_s) * (d_eff - dc_eff))
                 A_s_req = ((K_bal * f_ck * b * d_eff ** 2) / (z_m * (f_yk_main / gamma_s))) + A_sc_req
+                compression_utilisation_ratio = A_sc_req / A_sc_total if A_sc_total > 0 else None
 
             # Minimum and Maximum Reinforcement Check
             A_s_min_check = 0.001572 * b * d_eff
@@ -314,80 +331,91 @@ class RCBeamDesignApp(QWidget):
             A_s_req = max(A_s_req, A_s_min_check)
             A_s_req = min(A_s_req, A_s_max)
 
-            # Calculate utilisation ratios
-            tension_utilisation_ratio = A_s_req / A_s_total if A_s_total > 0 else 0
-            compression_utilisation_ratio = A_sc_req / A_sc_total if A_sc_total > 0 and section_type == "Doubly Reinforced Section" else None
-
             # Design Summary
-            design_summary = [
-                f"Section Type: {section_type}",
-                f"Tension Reinforcement Utilisation Ratio: {tension_utilisation_ratio:.2f}",
-            ]
-
-            if compression_utilisation_ratio is not None:
-                design_summary.append(f"Compression Reinforcement Utilisation Ratio: {compression_utilisation_ratio:.2f}")
-
-            # Display calculation results
-            output_text = design_summary + [
-                "\nMaterial and Section Details:",
-                f"Concrete strength (f_ck): {f_ck} N/mm²",
-                f"Main reinforcement strength (f_yk_main): {f_yk_main} N/mm²",
-                f"Shear reinforcement strength (f_yk_shear): {f_yk_shear} N/mm²",
-                f"Partial factor for concrete (gamma_c): {gamma_c}",
-                f"Compressive strength coefficient (alpha_cc): {alpha_cc}",
-                f"Partial factor for steel (gamma_s): {gamma_s}",
-
-                "\nCalculated Design Strengths:",
-                f"Design strength of main reinforcement (f_yd_main): {f_yk_main / gamma_s} N/mm²",
-                f"Design strength of shear reinforcement (f_yd_shear): {f_yk_shear / gamma_s} N/mm²",
-
-                "\nSection Details:",
-                f"Nominal cover (c_nom): {c_nom} mm",
-                f"Section depth (h): {h} mm",
-                f"Section width (b): {b} mm",
-
-                "\nReinforcement Details:",
-                f"Total area of tension reinforcement (A_s_pro): {A_s_total:.2f} mm²",
-                f"Total area of compression reinforcement (A_sc_pro): {A_sc_total:.2f} mm²",
-
-                "\nEffective Depth Values:",
-                f"Distance from centroid to tension reinforcement layer (y_t): {y_t:.2f} mm",
-                f"Distance from centroid to compression reinforcement layer (y_c): {y_c:.2f} mm",
-                f"Effective Depth to tension reinforcement (d_eff): {d_eff:.2f} mm",
-                f"Effective Depth to compression reinforcement (dc_eff): {dc_eff:.2f} mm",
-
-                "\nBending Design Results:",
-                f"Lever Arm (z_m): {z_m:.2f} mm",
-                f"Moment Ratio (K): {K:.3f}",
-                f"Balanced Moment Ratio (K_bal): {K_bal:.3f}",
-                f"Required Area of Tension Reinforcement (A_s_req): {A_s_req:.2f} mm²",
-                f"Required Area of Compression Reinforcement (A_sc_req): {A_sc_req:.2f} mm²",
-            ]
-
-            # Bending Design Checks
-            bending_design_checks = [
-                "\nBending Design Checks:",
-                f"Tension Reinforcement Provided (A_s_pro) {'is greater than' if A_s_total >= A_s_req else 'is not greater than'} Required (A_s_req)."
-            ]
+            output_text = [f"<b><u>Design Summary</u></b>\n"]
+            output_text.append(f"Section Type = {section_type}\n")
+            tension_utilisation_ratio = A_s_req / A_s_total if A_s_total > 0 else 0
+            if tension_utilisation_ratio > 1:
+                output_text.append(f"<span style='color:red;'>Tension Reinforcement Utilisation Ratio = {tension_utilisation_ratio:.3f} > 1 ; Fail</span>\n")
+            else:
+                output_text.append(f"<span style='color:green;'>Tension Reinforcement Utilisation Ratio = {tension_utilisation_ratio:.3f} < 1 ; Pass</span>\n")
 
             if section_type == "Doubly Reinforced Section":
-                bending_design_checks.append(
-                    f"Compression Reinforcement Provided (A_sc_pro) {'is greater than' if A_sc_total >= A_sc_req else 'is not greater than'} Required (A_sc_req)."
-                )
+                if A_sc_req > 0 and A_sc_total == 0:
+                    output_text.append(f"<span style='color:red;'>Compression Reinforcement not provided ; Fail</span>")
+                elif compression_utilisation_ratio is not None:
+                    if compression_utilisation_ratio > 1:
+                        output_text.append(f"<span style='color:red;'>Compression Reinforcement Utilisation Ratio = {compression_utilisation_ratio:.3f} > 1 ; Fail</span>")
+                    else:
+                        output_text.append(f"<span style='color:green;'>Compression Reinforcement Utilisation Ratio = {compression_utilisation_ratio:.3f} < 1 ; Pass</span>")
 
-            output_text += bending_design_checks
+            # Add original details to output, each on a new line
+            output_text += [
+                "<br><b><u>Material and Section Details</u></b>\n",
+                f"Concrete strength (f_ck) = {f_ck:.3f} N/mm²\n",
+                f"Main reinforcement strength (f_yk_main) = {f_yk_main:.3f} N/mm²\n",
+                f"Shear reinforcement strength (f_yk_shear) = {f_yk_shear:.3f} N/mm²\n",
+                f"Partial factor for concrete (gamma_c) = {gamma_c:.3f}\n",
+                f"Compressive strength coefficient (alpha_cc) = {alpha_cc:.3f}\n",
+                f"Partial factor for steel (gamma_s) = {gamma_s:.3f}\n\n",
 
-            self.result_display.setText('\n'.join(output_text))
+                "<br><b><u>Calculated Design Strengths</u></b>\n",
+                f"Design strength of main reinforcement (f_yd_main) = {f_yk_main / gamma_s:.3f} N/mm²\n",
+                f"Design strength of shear reinforcement (f_yd_shear) = {f_yk_shear / gamma_s:.3f} N/mm²\n",
+
+                "<br><b><u>Section Details</u></b>\n",
+                f"Nominal cover (c_nom) = {c_nom:.3f} mm\n",
+                f"Section depth (h) = {h:.3f} mm\n",
+                f"Section width (b) = {b:.3f} mm\n\n",
+
+                "<br><b><u>Reinforcement Details</u></b>\n",
+                f"Total area of tension reinforcement (A_s_pro) = {A_s_total:.2f} mm²\n",
+                f"Total area of compression reinforcement (A_sc_pro) = {A_sc_total:.2f} mm²\n",
+
+                "<br><b><u>Effective Depth Values</u></b>\n",
+                f"Distance from centroid to tension reinforcement layer (y_t) = {y_t:.2f} mm\n",
+                f"Distance from centroid to compression reinforcement layer (y_c) = {y_c:.2f} mm\n",
+                f"Effective Depth to tension reinforcement (d_eff) = {d_eff:.2f} mm\n",
+                f"Effective Depth to compression reinforcement (dc_eff) = {dc_eff:.2f} mm\n",
+            ]
+
+            # Bending Design Results
+            output_text.append("<br><b><u>Bending Design Results</u></b>\n")
+            output_text.append(f"Section Type = {section_type}\n")
+            output_text.append(f"A_s_Pro = {A_s_total:.3f} mm²\n")
+            output_text.append(f"A_s_req = {A_s_req:.3f} mm²\n")
+
+            if tension_utilisation_ratio >= 1:
+                output_text.append(f"<span style='color:red;'>A_s_req / A_s_Pro = {tension_utilisation_ratio:.3f} >= 1 ; Fail</span>\n")
+            else:
+                output_text.append(f"<span style='color:green;'>A_s_req / A_s_Pro = {tension_utilisation_ratio:.3f} < 1 ; Pass</span>\n")
+
+            if section_type == "Doubly Reinforced Section":
+                if A_sc_req > 0 and A_sc_total == 0:
+                    output_text.append(f"<span style='color:red;'>Compression Reinforcement not provided ; Fail</span>\n")
+                elif A_sc_req > 0:
+                    output_text.append(f"A_sc_Pro = {A_sc_total:.3f} mm²\n")
+                    output_text.append(f"A_sc_req = {A_sc_req:.3f} mm²\n")
+
+                    if compression_utilisation_ratio is not None:
+                        if compression_utilisation_ratio >= 1:
+                            output_text.append(f"<span style='color:red;'>A_sc_req / A_sc_Pro = {compression_utilisation_ratio:.3f} >= 1 ; Fail</span>\n")
+                        else:
+                            output_text.append(f"<span style='color:green;'>A_sc_req / A_sc_Pro = {compression_utilisation_ratio:.3f} <= 1 ; Pass</span>\n")
+
+            # Display calculation results in HTML format, with each line on a new line
+            self.result_display.setHtml('<br>'.join(output_text))
 
             # Update the diagram
             self.plot_section_diagram(c_nom, b, h, reinforcement_layers, d_w)
 
-        except ValueError as e:
+        except Exception as e:
             self.result_display.setText(f"Error: {str(e)}")
+
+
 
         except Exception as e:
             self.result_display.setText(f"Unexpected error: {str(e)}")
-
 
 
 
