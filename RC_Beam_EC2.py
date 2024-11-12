@@ -116,7 +116,7 @@ class RCBeamDesignApp(QWidget):
             tension_diameter_input.addItems([""])
             tension_diameter_input.addItems(['10', '12', '13', '16', '20', '25', '32', '40', '55'])
             tension_diameter_input.setFixedWidth(60)  # Set width to match existing input field size
-            tension_number_input = QLineEdit('0')
+            tension_number_input = QLineEdit('')
             tension_number_input.setFixedWidth(60)  # Set width to match existing input field size
             tension_form_layout.addWidget(tension_diameter_input, i, 1)
             tension_form_layout.addWidget(tension_number_input, i, 2)
@@ -139,7 +139,7 @@ class RCBeamDesignApp(QWidget):
             compression_diameter_input.addItems([""])
             compression_diameter_input.addItems(['10', '12', '13', '16', '20', '25', '32', '40', '55'])
             compression_diameter_input.setFixedWidth(60)  # Set width to match existing input field size
-            compression_number_input = QLineEdit('0')
+            compression_number_input = QLineEdit('')
             compression_number_input.setFixedWidth(60)  # Set width to match existing input field size
             compression_form_layout.addWidget(compression_diameter_input, i, 1)
             compression_form_layout.addWidget(compression_number_input, i, 2)
@@ -209,15 +209,26 @@ class RCBeamDesignApp(QWidget):
             h = float(self.section_depth_input.text())
             b = float(self.section_width_input.text())
 
-            # Check if shear reinforcement diameter has been selected
-            if not self.d_w_input.currentText():
-                raise ValueError("Please select a shear reinforcement diameter.")
+            # Get shear reinforcement diameter from ComboBox (can be empty or zero)
+            d_w = float(self.d_w_input.currentText()) if self.d_w_input.currentText() else 0
 
-            d_w = float(self.d_w_input.currentText())  # Get shear reinforcement diameter from ComboBox
+            # Validation for the first layer of tension reinforcement
+            first_tension_diameter_input, first_tension_number_input = self.tension_layers_input[0]
 
+            if not first_tension_diameter_input.currentText() or not first_tension_number_input.text():
+                raise ValueError("Please provide tension reinforcement diameter & number of bars.")
+
+            try:
+                first_layer_diameter = float(first_tension_diameter_input.currentText())
+                first_layer_number = int(first_tension_number_input.text())
+            except ValueError:
+                raise ValueError("Please provide valid numeric values for tension reinforcement diameter & number of bars.")
+
+            # Continue processing other tension and compression layers
             reinforcement_layers = {'tension': [], 'compression': []}
             for diameter_input, number_input in self.tension_layers_input:
-                if not diameter_input.currentText():  # Check if the value is empty
+                # Skip if diameter or number is empty
+                if not diameter_input.currentText() or not number_input.text():
                     continue
                 d_s = float(diameter_input.currentText())  # Get diameter from ComboBox
                 n_s = int(number_input.text())
@@ -226,13 +237,14 @@ class RCBeamDesignApp(QWidget):
                     reinforcement_layers['tension'].append((d_s, A_s))
 
             for diameter_input, number_input in self.compression_layers_input:
-                if not diameter_input.currentText():  # Check if the value is empty
+                # Skip if diameter or number is empty
+                if not diameter_input.currentText() or not number_input.text():
                     continue
                 d_sc = float(diameter_input.currentText())  # Get diameter from ComboBox
                 n_sc = int(number_input.text())
                 if d_sc > 0 and n_sc > 0:
                     A_sc = math.pi * (d_sc ** 2) * 0.25 * n_sc
-                    reinforcement_layers['compression'].append((d_sc, A_sc))            
+                    reinforcement_layers['compression'].append((d_sc, A_sc))
 
             A_s_total = sum(A_s for _, A_s in reinforcement_layers['tension'])
             y_t = 0
@@ -249,7 +261,8 @@ class RCBeamDesignApp(QWidget):
                     layer_depth = previous_layers_depth + (d_s * 0.5)
                 y_t += A_s * layer_depth
 
-            y_t /= A_s_total
+            if A_s_total > 0:
+                y_t /= A_s_total
 
             # Corrected Centroid Calculation for Compression Reinforcement Layers
             A_sc_total = sum(A_sc for _, A_sc in reinforcement_layers['compression'])
@@ -266,31 +279,25 @@ class RCBeamDesignApp(QWidget):
                     layer_depth = previous_layers_depth + (d_sc * 0.5)
                 y_c += A_sc * layer_depth
 
-            y_c /= A_sc_total
+            if A_sc_total > 0:
+                y_c /= A_sc_total
 
             d_eff = h - c_nom - d_w - y_t
             dc_eff = c_nom + d_w + y_c
 
             # Redistribution
-            #rdp = 15 default redistribution percentage
             rdp = float(self.rdp_input.text())  # Get Redistribution Percentage from user input
-
             mr = 1 - (rdp / 100)
 
             # K calculations
             K_bal = 0.453 * (mr - 0.4) * (1 - 0.4 * (mr - 0.4))
             M_Ed = float(self.uls_m_ed_input.text()) * 1e6  # Get ULS M_Ed value from user input (converted to Nmm)
-     
+
             K = M_Ed / (b * d_eff ** 2 * f_ck)
 
             if K <= K_bal:
                 # Singly reinforced
-                # Calculate lever arm 'z_m'
-                if (0.25 - 0.881 * K) < 0:
-                    # If the value inside the square root is negative, use 0.95 * d_eff
-                    z_m = 0.95 * d_eff
-                else:
-                    z_m = min(((0.5 + (0.25 - 0.881 * K) ** 0.5) * d_eff), 0.95 * d_eff)
+                z_m = min(((0.5 + (0.25 - 0.881 * K) ** 0.5) * d_eff), 0.95 * d_eff) if (0.25 - 0.881 * K) >= 0 else 0.95 * d_eff
                 A_s_min = 0.001572 * b * d_eff
                 A_s_req = max(M_Ed / (z_m * (f_yk_main / gamma_s)), A_s_min)
                 A_sc_req = 0  # No compression reinforcement required
@@ -298,7 +305,7 @@ class RCBeamDesignApp(QWidget):
                 # Doubly reinforced
                 z_m = d_eff * 0.82
                 A_sc_req = ((K - K_bal) * f_ck * b * d_eff ** 2) / ((f_yk_main / gamma_s) * (d_eff - dc_eff))
-                A_s_req = ((K_bal*f_ck*b*d_eff ** 2 )/ (z_m * (f_yk_main / gamma_s))) + A_sc_req
+                A_s_req = ((K_bal * f_ck * b * d_eff ** 2) / (z_m * (f_yk_main / gamma_s))) + A_sc_req
 
             # Minimum and Maximum Reinforcement Check
             A_s_min_check = 0.001572 * b * d_eff
@@ -349,8 +356,13 @@ class RCBeamDesignApp(QWidget):
             # Update the diagram
             self.plot_section_diagram(c_nom, b, h, reinforcement_layers, d_w)
 
-        except Exception as e:
+        except ValueError as e:
             self.result_display.setText(f"Error: {str(e)}")
+
+        except Exception as e:
+            self.result_display.setText(f"Unexpected error: {str(e)}")
+
+
 
 
     def plot_section_diagram(self, c_nom, b, h, reinforcement_layers, d_w):
