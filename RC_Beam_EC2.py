@@ -296,13 +296,13 @@ class RCBeamDesignApp(QWidget):
             K = M_Ed / (b * d_eff ** 2 * f_ck)
 
             if K <= K_bal:
-                # Singly reinforced
+                section_type = "Singly Reinforced Section"
                 z_m = min(((0.5 + (0.25 - 0.881 * K) ** 0.5) * d_eff), 0.95 * d_eff) if (0.25 - 0.881 * K) >= 0 else 0.95 * d_eff
                 A_s_min = 0.001572 * b * d_eff
                 A_s_req = max(M_Ed / (z_m * (f_yk_main / gamma_s)), A_s_min)
                 A_sc_req = 0  # No compression reinforcement required
             else:
-                # Doubly reinforced
+                section_type = "Doubly Reinforced Section"
                 z_m = d_eff * 0.82
                 A_sc_req = ((K - K_bal) * f_ck * b * d_eff ** 2) / ((f_yk_main / gamma_s) * (d_eff - dc_eff))
                 A_s_req = ((K_bal * f_ck * b * d_eff ** 2) / (z_m * (f_yk_main / gamma_s))) + A_sc_req
@@ -314,8 +314,21 @@ class RCBeamDesignApp(QWidget):
             A_s_req = max(A_s_req, A_s_min_check)
             A_s_req = min(A_s_req, A_s_max)
 
+            # Calculate utilisation ratios
+            tension_utilisation_ratio = A_s_req / A_s_total if A_s_total > 0 else 0
+            compression_utilisation_ratio = A_sc_req / A_sc_total if A_sc_total > 0 and section_type == "Doubly Reinforced Section" else None
+
+            # Design Summary
+            design_summary = [
+                f"Section Type: {section_type}",
+                f"Tension Reinforcement Utilisation Ratio: {tension_utilisation_ratio:.2f}",
+            ]
+
+            if compression_utilisation_ratio is not None:
+                design_summary.append(f"Compression Reinforcement Utilisation Ratio: {compression_utilisation_ratio:.2f}")
+
             # Display calculation results
-            output_text = [
+            output_text = design_summary + [
                 "\nMaterial and Section Details:",
                 f"Concrete strength (f_ck): {f_ck} N/mm²",
                 f"Main reinforcement strength (f_yk_main): {f_yk_main} N/mm²",
@@ -351,6 +364,19 @@ class RCBeamDesignApp(QWidget):
                 f"Required Area of Compression Reinforcement (A_sc_req): {A_sc_req:.2f} mm²",
             ]
 
+            # Bending Design Checks
+            bending_design_checks = [
+                "\nBending Design Checks:",
+                f"Tension Reinforcement Provided (A_s_pro) {'is greater than' if A_s_total >= A_s_req else 'is not greater than'} Required (A_s_req)."
+            ]
+
+            if section_type == "Doubly Reinforced Section":
+                bending_design_checks.append(
+                    f"Compression Reinforcement Provided (A_sc_pro) {'is greater than' if A_sc_total >= A_sc_req else 'is not greater than'} Required (A_sc_req)."
+                )
+
+            output_text += bending_design_checks
+
             self.result_display.setText('\n'.join(output_text))
 
             # Update the diagram
@@ -361,6 +387,7 @@ class RCBeamDesignApp(QWidget):
 
         except Exception as e:
             self.result_display.setText(f"Unexpected error: {str(e)}")
+
 
 
 
