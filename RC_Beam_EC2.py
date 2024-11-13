@@ -331,80 +331,74 @@ class RCBeamDesignApp(QWidget):
             A_s_req = max(A_s_req, A_s_min_check)
             A_s_req = min(A_s_req, A_s_max)
 
-            # Design Summary
-            output_text = [f"<b><u>Design Summary</u></b>\n"]
-            output_text.append(f"Section Type = {section_type}\n")
+            # Calculations for utilization ratios
             tension_utilisation_ratio = A_s_req / A_s_total if A_s_total > 0 else 0
-            if tension_utilisation_ratio > 1:
-                output_text.append(f"<span style='color:red;'>Tension Reinforcement Utilisation Ratio = {tension_utilisation_ratio:.3f} > 1 ; Fail</span>\n")
-            else:
-                output_text.append(f"<span style='color:green;'>Tension Reinforcement Utilisation Ratio = {tension_utilisation_ratio:.3f} < 1 ; Pass</span>\n")
+            compression_utilisation_ratio = A_sc_req / A_sc_total if A_sc_total > 0 else None
 
+            # Start building the output text with <br> for line breaks
+            output_text = "<b><u>Design Summary</u></b><br>"
+            output_text += f"Section Type = {section_type}<br>"
+
+            # Tension Utilization Check
+            if tension_utilisation_ratio >= 1:
+                output_text += f"Tension Reinforcement Utilisation Ratio = {tension_utilisation_ratio:.3f} >= 1 ; Check Fail<br>"
+            else:
+                output_text += f"Tension Reinforcement Utilisation Ratio = {tension_utilisation_ratio:.3f} < 1 ; Check ok<br><br>"
+
+            # Compression Reinforcement Utilization Check if Doubly Reinforced Section
             if section_type == "Doubly Reinforced Section":
                 if A_sc_req > 0 and A_sc_total == 0:
-                    output_text.append(f"<span style='color:red;'>Compression Reinforcement not provided ; Fail</span>")
+                    output_text += f"Compression Reinforcement not provided ; Check Fail<br><br>"
                 elif compression_utilisation_ratio is not None:
-                    if compression_utilisation_ratio > 1:
-                        output_text.append(f"<span style='color:red;'>Compression Reinforcement Utilisation Ratio = {compression_utilisation_ratio:.3f} > 1 ; Fail</span>")
+                    if compression_utilisation_ratio >= 1:
+                        output_text += f"Compression Reinforcement Utilisation Ratio = {compression_utilisation_ratio:.3f} >= 1 ; Check Fail<br><br>"
                     else:
-                        output_text.append(f"<span style='color:green;'>Compression Reinforcement Utilisation Ratio = {compression_utilisation_ratio:.3f} < 1 ; Pass</span>")
+                        output_text += f"Compression Reinforcement Utilisation Ratio = {compression_utilisation_ratio:.3f} < 1 ; Check ok<br><br>"
 
-            # Add original details to output, each on a new line
-            output_text += [
-                "<br><b><u>Material and Section Details</u></b>\n",
-                f"Concrete strength (f_ck) = {f_ck:.3f} N/mm²\n",
-                f"Main reinforcement strength (f_yk_main) = {f_yk_main:.3f} N/mm²\n",
-                f"Shear reinforcement strength (f_yk_shear) = {f_yk_shear:.3f} N/mm²\n",
-                f"Partial factor for concrete (gamma_c) = {gamma_c:.3f}\n",
-                f"Compressive strength coefficient (alpha_cc) = {alpha_cc:.3f}\n",
-                f"Partial factor for steel (gamma_s) = {gamma_s:.3f}\n\n",
-
-                "<br><b><u>Calculated Design Strengths</u></b>\n",
-                f"Design strength of main reinforcement (f_yd_main) = {f_yk_main / gamma_s:.3f} N/mm²\n",
-                f"Design strength of shear reinforcement (f_yd_shear) = {f_yk_shear / gamma_s:.3f} N/mm²\n",
-
-                "<br><b><u>Section Details</u></b>\n",
-                f"Nominal cover (c_nom) = {c_nom:.3f} mm\n",
-                f"Section depth (h) = {h:.3f} mm\n",
-                f"Section width (b) = {b:.3f} mm\n\n",
-
-                "<br><b><u>Reinforcement Details</u></b>\n",
-                f"Total area of tension reinforcement (A_s_pro) = {A_s_total:.2f} mm²\n",
-                f"Total area of compression reinforcement (A_sc_pro) = {A_sc_total:.2f} mm²\n",
-
-                "<br><b><u>Effective Depth Values</u></b>\n",
-                f"Distance from centroid to tension reinforcement layer (y_t) = {y_t:.2f} mm\n",
-                f"Distance from centroid to compression reinforcement layer (y_c) = {y_c:.2f} mm\n",
-                f"Effective Depth to tension reinforcement (d_eff) = {d_eff:.2f} mm\n",
-                f"Effective Depth to compression reinforcement (dc_eff) = {dc_eff:.2f} mm\n",
-            ]
+            # Material and Section Details
+            output_text += (
+                "<b><u>Material and Section Details</u></b><br>"
+                f"Concrete strength (f_ck) = {f_ck:.3f} N/mm²<br>"
+                f"Main reinforcement strength (f_yk_main) = {f_yk_main:.3f} N/mm²<br>"
+                f"Shear reinforcement strength (f_yk_shear) = {f_yk_shear:.3f} N/mm²<br>"
+                f"Partial factor for concrete (gamma_c) = {gamma_c:.3f}<br>"
+                f"Compressive strength coefficient (alpha_cc) = {alpha_cc:.3f}<br>"
+                f"Partial factor for steel (gamma_s) = {gamma_s:.3f}<br><br>"
+            )
 
             # Bending Design Results
-            output_text.append("<br><b><u>Bending Design Results</u></b>\n")
-            output_text.append(f"Section Type = {section_type}\n")
-            output_text.append(f"A_s_Pro = {A_s_total:.3f} mm²\n")
-            output_text.append(f"A_s_req = {A_s_req:.3f} mm²\n")
+            output_text += "<b><u>Bending Design Results</u></b><br>"
+            output_text += f"Section Type = {section_type}<br>"
+            output_text += f"A_s_Pro = {A_s_total:.3f} mm²<br>"
+            output_text += f"A_s_req = {A_s_req:.3f} mm²<br>"
 
+            # Bending Utilization Check
             if tension_utilisation_ratio >= 1:
-                output_text.append(f"<span style='color:red;'>A_s_req / A_s_Pro = {tension_utilisation_ratio:.3f} >= 1 ; Fail</span>\n")
+                output_text += f"A_s_req / A_s_Pro = {tension_utilisation_ratio:.3f} >= 1 ; Check Fail<br><br>"
             else:
-                output_text.append(f"<span style='color:green;'>A_s_req / A_s_Pro = {tension_utilisation_ratio:.3f} < 1 ; Pass</span>\n")
+                output_text += f"A_s_req / A_s_Pro = {tension_utilisation_ratio:.3f} < 1 ; Check ok<br><br>"
 
+            # Compression Reinforcement Check if Doubly Reinforced Section
             if section_type == "Doubly Reinforced Section":
                 if A_sc_req > 0 and A_sc_total == 0:
-                    output_text.append(f"<span style='color:red;'>Compression Reinforcement not provided ; Fail</span>\n")
+                    output_text += f"Compression Reinforcement not provided ; Check Fail<br><br>"
                 elif A_sc_req > 0:
-                    output_text.append(f"A_sc_Pro = {A_sc_total:.3f} mm²\n")
-                    output_text.append(f"A_sc_req = {A_sc_req:.3f} mm²\n")
-
+                    output_text += f"A_sc_Pro = {A_sc_total:.3f} mm²<br>"
+                    output_text += f"A_sc_req = {A_sc_req:.3f} mm²<br>"
                     if compression_utilisation_ratio is not None:
                         if compression_utilisation_ratio >= 1:
-                            output_text.append(f"<span style='color:red;'>A_sc_req / A_sc_Pro = {compression_utilisation_ratio:.3f} >= 1 ; Fail</span>\n")
+                            output_text += f"A_sc_req / A_sc_Pro = {compression_utilisation_ratio:.3f} >= 1 ; Check Fail<br><br>"
                         else:
-                            output_text.append(f"<span style='color:green;'>A_sc_req / A_sc_Pro = {compression_utilisation_ratio:.3f} <= 1 ; Pass</span>\n")
+                            output_text += f"A_sc_req / A_sc_Pro = {compression_utilisation_ratio:.3f} < 1 ; Check ok<br><br>"
 
-            # Display calculation results in HTML format, with each line on a new line
-            self.result_display.setHtml('<br>'.join(output_text))
+            # Display calculation results in HTML format
+            self.result_display.setHtml(output_text)
+                        
+
+
+
+
+
 
             # Update the diagram
             self.plot_section_diagram(c_nom, b, h, reinforcement_layers, d_w)
