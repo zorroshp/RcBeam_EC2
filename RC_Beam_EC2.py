@@ -335,65 +335,115 @@ class RCBeamDesignApp(QWidget):
             tension_utilisation_ratio = A_s_req / A_s_total if A_s_total > 0 else 0
             compression_utilisation_ratio = A_sc_req / A_sc_total if A_sc_total > 0 else None
 
-            # Start building the output text with <br> for line breaks
-            output_text = "<b><u>Design Summary</u></b><br>"
-            output_text += f"Section Type = {section_type}<br>"
+            # Define all labels to calculate the maximum label length
+            labels = [
+                "Section Type",
+                "Tension Reinforcement Utilisation Ratio",
+                "Compression Reinforcement Utilisation Ratio",
+                "Concrete strength (f_ck)",
+                "Main reinforcement strength (f_yk_main)",
+                "Shear reinforcement strength (f_yk_shear)",
+                "Partial factor for concrete (gamma_c)",
+                "Compressive strength coefficient (alpha_cc)",
+                "Partial factor for steel (gamma_s)",
+                "A_s_Pro",
+                "A_s_req",
+                "A_s_req / A_s_Pro",
+                "A_sc_Pro",
+                "A_sc_req",
+                "A_sc_req / A_sc_Pro"
+            ]
+
+            # Calculate maximum label length and add padding
+            max_label_length = max(len(label) for label in labels) + 4  # Adjust padding as needed
+            label_width_css = f"{max_label_length}ch"  # Use the calculated width for CSS
+
+            # Define HTML with inline CSS for dynamically set label width
+            html_output = f"""
+            <style>
+                .label {{ width: {label_width_css}; text-align: left; padding-right: 10px; }}
+                .equal {{ width: 4ch; text-align: center; }}
+                .value {{ width: 10ch; text-align: right; }}
+                .unit {{ width: 8ch; text-align: left; padding-left: 10px; }}
+            </style>
+            <table>
+            """
+
+
+
+            # Helper function to create each row in the table
+            def format_row(parameter, value, unit=""):
+                # Format the value to 3 decimal places if it is a float
+                value_str = f"{value:.3f}" if isinstance(value, float) else value
+                return f"""
+                    <tr>
+                        <td class="label">{parameter}</td>
+                        <td class="equal">=</td>
+                        <td class="value">{value_str}</td>
+                        <td class="unit">{unit}</td>
+                    </tr>
+                """
+
+            # Start building the output table with headings
+            html_output += "<tr><td colspan='4'><b>DESIGN SUMMARY</b></td></tr>"
+            html_output += format_row("Section Type", section_type)
 
             # Tension Utilization Check
             if tension_utilisation_ratio >= 1:
-                output_text += f"Tension Reinforcement Utilisation Ratio = {tension_utilisation_ratio:.3f} >= 1 ; Check Fail<br>"
+                html_output += format_row("Tension Reinforcement Utilisation Ratio", tension_utilisation_ratio, "; Check Fail")
             else:
-                output_text += f"Tension Reinforcement Utilisation Ratio = {tension_utilisation_ratio:.3f} < 1 ; Check ok<br><br>"
+                html_output += format_row("Tension Reinforcement Utilisation Ratio", tension_utilisation_ratio, "; Check ok")
 
             # Compression Reinforcement Utilization Check if Doubly Reinforced Section
             if section_type == "Doubly Reinforced Section":
                 if A_sc_req > 0 and A_sc_total == 0:
-                    output_text += f"Compression Reinforcement not provided ; Check Fail<br><br>"
+                    html_output += format_row("Compression Reinforcement", "not provided", "; Check Fail")
                 elif compression_utilisation_ratio is not None:
                     if compression_utilisation_ratio >= 1:
-                        output_text += f"Compression Reinforcement Utilisation Ratio = {compression_utilisation_ratio:.3f} >= 1 ; Check Fail<br><br>"
+                        html_output += format_row("Compression Reinforcement Utilisation Ratio", compression_utilisation_ratio, "; Check Fail")
                     else:
-                        output_text += f"Compression Reinforcement Utilisation Ratio = {compression_utilisation_ratio:.3f} < 1 ; Check ok<br><br>"
+                        html_output += format_row("Compression Reinforcement Utilisation Ratio", compression_utilisation_ratio, "; Check ok")
 
             # Material and Section Details
-            output_text += (
-                "<b><u>Material and Section Details</u></b><br>"
-                f"Concrete strength (f_ck) = {f_ck:.3f} N/mm²<br>"
-                f"Main reinforcement strength (f_yk_main) = {f_yk_main:.3f} N/mm²<br>"
-                f"Shear reinforcement strength (f_yk_shear) = {f_yk_shear:.3f} N/mm²<br>"
-                f"Partial factor for concrete (gamma_c) = {gamma_c:.3f}<br>"
-                f"Compressive strength coefficient (alpha_cc) = {alpha_cc:.3f}<br>"
-                f"Partial factor for steel (gamma_s) = {gamma_s:.3f}<br><br>"
-            )
+            html_output += "<tr><td colspan='4'><b>MATERIAL AND SECTION DETAILS</b></td></tr>"
+            html_output += format_row("Concrete strength (f_ck)", f_ck, "N/mm²")
+            html_output += format_row("Main reinforcement strength (f_yk_main)", f_yk_main, "N/mm²")
+            html_output += format_row("Shear reinforcement strength (f_yk_shear)", f_yk_shear, "N/mm²")
+            html_output += format_row("Partial factor for concrete (gamma_c)", gamma_c)
+            html_output += format_row("Compressive strength coefficient (alpha_cc)", alpha_cc)
+            html_output += format_row("Partial factor for steel (gamma_s)", gamma_s)
 
             # Bending Design Results
-            output_text += "<b><u>Bending Design Results</u></b><br>"
-            output_text += f"Section Type = {section_type}<br>"
-            output_text += f"A_s_Pro = {A_s_total:.3f} mm²<br>"
-            output_text += f"A_s_req = {A_s_req:.3f} mm²<br>"
+            html_output += "<tr><td colspan='4'><b>BENDING DESIGN RESULTS</b></td></tr>"
+            html_output += format_row("Section Type", section_type)
+            html_output += format_row("A_s_Pro", A_s_total, "mm²")
+            html_output += format_row("A_s_req", A_s_req, "mm²")
 
             # Bending Utilization Check
             if tension_utilisation_ratio >= 1:
-                output_text += f"A_s_req / A_s_Pro = {tension_utilisation_ratio:.3f} >= 1 ; Check Fail<br><br>"
+                html_output += format_row("A_s_req / A_s_Pro", tension_utilisation_ratio, "; Check Fail")
             else:
-                output_text += f"A_s_req / A_s_Pro = {tension_utilisation_ratio:.3f} < 1 ; Check ok<br><br>"
+                html_output += format_row("A_s_req / A_s_Pro", tension_utilisation_ratio, "; Check ok")
 
             # Compression Reinforcement Check if Doubly Reinforced Section
             if section_type == "Doubly Reinforced Section":
                 if A_sc_req > 0 and A_sc_total == 0:
-                    output_text += f"Compression Reinforcement not provided ; Check Fail<br><br>"
+                    html_output += format_row("Compression Reinforcement", "not provided", "; Check Fail")
                 elif A_sc_req > 0:
-                    output_text += f"A_sc_Pro = {A_sc_total:.3f} mm²<br>"
-                    output_text += f"A_sc_req = {A_sc_req:.3f} mm²<br>"
+                    html_output += format_row("A_sc_Pro", A_sc_total, "mm²")
+                    html_output += format_row("A_sc_req", A_sc_req, "mm²")
                     if compression_utilisation_ratio is not None:
                         if compression_utilisation_ratio >= 1:
-                            output_text += f"A_sc_req / A_sc_Pro = {compression_utilisation_ratio:.3f} >= 1 ; Check Fail<br><br>"
+                            html_output += format_row("A_sc_req / A_sc_Pro", compression_utilisation_ratio, "; Check Fail")
                         else:
-                            output_text += f"A_sc_req / A_sc_Pro = {compression_utilisation_ratio:.3f} < 1 ; Check ok<br><br>"
+                            html_output += format_row("A_sc_req / A_sc_Pro", compression_utilisation_ratio, "; Check ok")
 
-            # Display calculation results in HTML format
-            self.result_display.setHtml(output_text)
-                        
+            # Close the table
+            html_output += "</table>"
+
+            # Display the HTML in your output field
+            self.result_display.setHtml(html_output)
+
 
 
 
